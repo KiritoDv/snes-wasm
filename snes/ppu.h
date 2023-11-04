@@ -142,6 +142,7 @@ void ppu_handleFrameStart(Ppu* ppu);
 void ppu_runLine(Ppu* ppu, int line);
 uint8_t ppu_read(Ppu* ppu, uint8_t adr);
 void ppu_write(Ppu* ppu, uint8_t adr, uint8_t val);
+void ppu_latchHV(Ppu* ppu);
 void ppu_putPixels(Ppu* ppu, uint8_t* pixels);
 void ppu_setPixelOutputFormat(Ppu* ppu, int pixelOutputFormat);
 

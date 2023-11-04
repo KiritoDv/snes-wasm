@@ -680,6 +680,12 @@ static uint16_t ppu_getVramRemap(Ppu* ppu) {
   return adr;
 }
 
+void ppu_latchHV(Ppu* ppu) {
+  ppu->hCount = ppu->snes->hPos / 4;
+  ppu->vCount = ppu->snes->vPos;
+  ppu->countersLatched = true;
+}
+
 uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
   switch(adr) {
     case 0x04: case 0x14: case 0x24:
@@ -698,10 +704,9 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
       return ppu->ppu1openBus;
     }
     case 0x37: {
-      // TODO: only when ppulatch is set
-      ppu->hCount = ppu->snes->hPos / 4;
-      ppu->vCount = ppu->snes->vPos;
-      ppu->countersLatched = true;
+      if (ppu->snes->ppuLatch & 0x80) {
+        ppu_latchHV(ppu);
+      }
       return ppu->snes->openBus;
     }
     case 0x38: {
