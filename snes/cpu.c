@@ -798,14 +798,15 @@ static void cpu_trb(Cpu* cpu, uint32_t low, uint32_t high) {
 static void cpu_doOpcode(Cpu* cpu, uint8_t opcode) {
   switch(opcode) {
     case 0x00: { // brk imm(s)
+      uint32_t vector = (cpu->e) ? 0xfffe : 0xffe6;
       cpu_readOpcode(cpu);
-      cpu_pushByte(cpu, cpu->k);
+      if (!cpu->e) cpu_pushByte(cpu, cpu->k);
       cpu_pushWord(cpu, cpu->pc, false);
       cpu_pushByte(cpu, cpu_getFlags(cpu));
       cpu->i = true;
       cpu->d = false;
       cpu->k = 0;
-      cpu->pc = cpu_readWord(cpu, 0xffe6, 0xffe7, true);
+      cpu->pc = cpu_readWord(cpu, vector, vector + 1, true);
       break;
     }
     case 0x01: { // ora idx
@@ -815,14 +816,15 @@ static void cpu_doOpcode(Cpu* cpu, uint8_t opcode) {
       break;
     }
     case 0x02: { // cop imm(s)
+      uint32_t vector = (cpu->e) ? 0xfff4 : 0xffe4;
       cpu_readOpcode(cpu);
-      cpu_pushByte(cpu, cpu->k);
+      if (!cpu->e) cpu_pushByte(cpu, cpu->k);
       cpu_pushWord(cpu, cpu->pc, false);
       cpu_pushByte(cpu, cpu_getFlags(cpu));
       cpu->i = true;
       cpu->d = false;
       cpu->k = 0;
-      cpu->pc = cpu_readWord(cpu, 0xffe4, 0xffe5, true);
+      cpu->pc = cpu_readWord(cpu, vector, vector + 1, true);
       break;
     }
     case 0x03: { // ora sr
@@ -977,7 +979,7 @@ static void cpu_doOpcode(Cpu* cpu, uint8_t opcode) {
     }
     case 0x1b: { // tcs imp
       cpu_adrImp(cpu);
-      cpu->sp = cpu->a;
+      cpu->sp = (cpu->e) ? (cpu->a & 0xff) | 0x100 : cpu->a;
       break;
     }
     case 0x1c: { // trb abs
@@ -1823,7 +1825,7 @@ static void cpu_doOpcode(Cpu* cpu, uint8_t opcode) {
     }
     case 0x9a: { // txs imp
       cpu_adrImp(cpu);
-      cpu->sp = cpu->x;
+      cpu->sp = (cpu->e) ? (cpu->x & 0xff) | 0x100 : cpu->x;
       break;
     }
     case 0x9b: { // txy imp

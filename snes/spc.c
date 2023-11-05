@@ -97,9 +97,9 @@ void spc_runOpcode(Spc* spc) {
   }
   if (spc->step == 0) {
     spc->bstep = 0;
-	spc->opcode = spc_readOpcode(spc);
-	spc->step = 1;
-	return;
+    spc->opcode = spc_readOpcode(spc);
+    spc->step = 1;
+    return;
   }
   spc_doOpcode(spc, spc->opcode);
   if (spc->step == 1) spc->step = 0; // reset step for non cycle-stepped opcodes.
