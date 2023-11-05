@@ -706,7 +706,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
       return ppu->ppu1openBus;
     }
     case 0x37: {
-      if(ppu->snes->ppuLatch & 0x80) {
+      if(ppu->snes->ppuLatch) {
         ppu_latchHV(ppu);
       }
       return ppu->snes->openBus;
@@ -796,9 +796,11 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
       val |= ppu->ppu2openBus & 0x20;
       val |= ppu->countersLatched << 6;
       val |= ppu->evenFrame << 7;
-      ppu->countersLatched = false; // TODO: only when ppulatch is set
-      ppu->hCountSecond = false;
-      ppu->vCountSecond = false;
+      if(ppu->snes->ppuLatch) {
+        ppu->countersLatched = false;
+        ppu->hCountSecond = false;
+        ppu->vCountSecond = false;
+      }
       ppu->ppu2openBus = val;
       return val;
     }
