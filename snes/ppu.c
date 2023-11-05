@@ -281,6 +281,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
   int r = 0, r2 = 0;
   int g = 0, g2 = 0;
   int b = 0, b2 = 0;
+  bool halfColor = ppu->halfColor;
   if(!ppu->forcedBlank) {
     int mainLayer = ppu_getPixel(ppu, x, y, false, &r, &g, &b);
     bool colorWindowState = ppu_getWindowState(ppu, 5, x);
@@ -289,6 +290,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
       (ppu->clipMode == 2 && colorWindowState) ||
       (ppu->clipMode == 1 && !colorWindowState)
     ) {
+      if(ppu->clipMode < 3) halfColor = false;
       r = 0;
       g = 0;
       b = 0;
@@ -303,7 +305,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
       secondLayer = ppu_getPixel(ppu, x, y, true, &r2, &g2, &b2);
     }
     // TODO: subscreen pixels can be clipped to black as well
-    // TODO: math for subscreen pixels (add/sub sub to main)
+    // TODO: math for subscreen pixels (add/sub sub to main, in hires mode)
     if(mathEnabled) {
       if(ppu->subtractColor) {
         r -= (ppu->addSubscreen && secondLayer != 5) ? r2 : ppu->fixedColorR;
@@ -314,7 +316,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
         g += (ppu->addSubscreen && secondLayer != 5) ? g2 : ppu->fixedColorG;
         b += (ppu->addSubscreen && secondLayer != 5) ? b2 : ppu->fixedColorB;
       }
-      if(ppu->halfColor && (secondLayer != 5 || !ppu->addSubscreen)) {
+      if(halfColor && (secondLayer != 5 || !ppu->addSubscreen)) {
         r >>= 1;
         g >>= 1;
         b >>= 1;
@@ -704,7 +706,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
       return ppu->ppu1openBus;
     }
     case 0x37: {
-      if (ppu->snes->ppuLatch & 0x80) {
+      if(ppu->snes->ppuLatch & 0x80) {
         ppu_latchHV(ppu);
       }
       return ppu->snes->openBus;
