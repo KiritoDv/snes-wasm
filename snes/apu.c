@@ -18,6 +18,9 @@ static const uint8_t bootRom[0x40] = {
   0xf6, 0xda, 0x00, 0xba, 0xf4, 0xc4, 0xf4, 0xdd, 0x5d, 0xd0, 0xdb, 0x1f, 0x00, 0x00, 0xc0, 0xff
 };
 
+static const double apuCyclesPerMaster = (32040 * 32) / (1364 * 262 * 60.0);
+static const double apuCyclesPerMasterPal = (32040 * 32) / (1364 * 312 * 50.0);
+
 static void apu_cycle(Apu* apu);
 
 Apu* apu_init(Snes* snes) {
@@ -59,7 +62,7 @@ void apu_handleState(Apu* apu, StateHandler* sh) {
     &apu->dspAdr, &apu->inPorts[0], &apu->inPorts[1], &apu->inPorts[2], &apu->inPorts[3], &apu->inPorts[4],
     &apu->inPorts[5], &apu->outPorts[0], &apu->outPorts[1], &apu->outPorts[2], &apu->outPorts[3], NULL
   );
-  sh_handleInts(sh, &apu->cycles, NULL);
+  sh_handleLongLongs(sh, &apu->cycles, NULL);
   for(int i = 0; i < 3; i++) {
     sh_handleBools(sh, &apu->timer[i].enabled, NULL);
     sh_handleBytes(sh, &apu->timer[i].cycles, &apu->timer[i].divider, &apu->timer[i].target, &apu->timer[i].counter, NULL);
@@ -70,15 +73,12 @@ void apu_handleState(Apu* apu, StateHandler* sh) {
   dsp_handleState(apu->dsp, sh);
 }
 
-int apu_runCycles(Apu* apu, int wantedCycles) {
-  int runCycles = 0;
-  uint32_t startCycles = apu->cycles;
-  while(runCycles < wantedCycles) {
+void apu_runCycles(Apu* apu) {
+  uint64_t sync_to = (uint64_t)apu->snes->cycles * (apu->snes->palTiming ? apuCyclesPerMasterPal : apuCyclesPerMaster);
+
+  while (apu->cycles < sync_to) {
     spc_runOpcode(apu->spc);
-    runCycles += (uint32_t) (apu->cycles - startCycles);
-    startCycles = apu->cycles;
   }
-  return runCycles;
 }
 
 static void apu_cycle(Apu* apu) {

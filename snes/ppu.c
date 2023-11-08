@@ -61,6 +61,9 @@ static const int spriteSizes[8][2] = {
   {16, 64}, {32, 64}, {16, 32}, {16, 32}
 };
 
+static uint32_t bright_lut[0x10];
+static uint8_t color_clamp_lut[0x20 * 3];
+
 static void ppu_handlePixel(Ppu* ppu, int x, int y);
 static int ppu_getPixel(Ppu* ppu, int x, int y, bool sub, int* r, int* g, int* b);
 static uint16_t ppu_getOffsetValue(Ppu* ppu, int col, int row);
@@ -75,7 +78,6 @@ static uint16_t ppu_getVramRemap(Ppu* ppu);
 Ppu* ppu_init(Snes* snes) {
   Ppu* ppu = malloc(sizeof(Ppu));
   ppu->snes = snes;
-  ppu_setPixelOutputFormat(ppu, ppu_pixelOutputFormatBGRX);
   return ppu;
 }
 
@@ -84,6 +86,21 @@ void ppu_free(Ppu* ppu) {
 }
 
 void ppu_reset(Ppu* ppu) {
+  // create brightness and color clamp LUTs (rendering opti)
+  for (int i = 0; i < 0x10; i++) {
+    bright_lut[i] = (i * 0x10000) / 15;
+  }
+  for (int i = 0; i < 0x20*3; i++) {
+    if (i < 0x20) {
+      color_clamp_lut[i] = 0;
+	}
+    if (i >= 0x20 && i <= 0x3f) {
+      color_clamp_lut[i] = i - 0x20; // 0 - 1f
+    }
+    if (i >= 0x40) {
+      color_clamp_lut[i] = 0x1f;
+    }
+  }
   memset(ppu->vram, 0, sizeof(ppu->vram));
   ppu->vramPointer = 0;
   ppu->vramIncrementOnHigh = false;
@@ -273,10 +290,6 @@ void ppu_runLine(Ppu* ppu, int line) {
   }
 }
 
-void ppu_setPixelOutputFormat(Ppu* ppu, int pixelOutputFormat) {
-  ppu->pixelOutputFormat = pixelOutputFormat;
-}
-
 static void ppu_handlePixel(Ppu* ppu, int x, int y) {
   int r = 0, r2 = 0;
   int g = 0, g2 = 0;
@@ -321,24 +334,23 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
         g >>= 1;
         b >>= 1;
       }
-      if(r > 31) r = 31;
-      if(g > 31) g = 31;
-      if(b > 31) b = 31;
-      if(r < 0) r = 0;
-      if(g < 0) g = 0;
-      if(b < 0) b = 0;
+      r = color_clamp_lut[0x20 + r];
+      g = color_clamp_lut[0x20 + g];
+      b = color_clamp_lut[0x20 + b];
     }
     if(!(ppu->pseudoHires || ppu->mode == 5 || ppu->mode == 6)) {
       r2 = r; g2 = g; b2 = b;
     }
   }
-  int row = (y - 1) + (ppu->evenFrame ? 0 : 239);
-  ppu->pixelBuffer[row * 2048 + x * 8 + 0 + ppu->pixelOutputFormat] = ((b2 << 3) | (b2 >> 2)) * ppu->brightness / 15;
-  ppu->pixelBuffer[row * 2048 + x * 8 + 1 + ppu->pixelOutputFormat] = ((g2 << 3) | (g2 >> 2)) * ppu->brightness / 15;
-  ppu->pixelBuffer[row * 2048 + x * 8 + 2 + ppu->pixelOutputFormat] = ((r2 << 3) | (r2 >> 2)) * ppu->brightness / 15;
-  ppu->pixelBuffer[row * 2048 + x * 8 + 4 + ppu->pixelOutputFormat] = ((b << 3) | (b >> 2)) * ppu->brightness / 15;
-  ppu->pixelBuffer[row * 2048 + x * 8 + 5 + ppu->pixelOutputFormat] = ((g << 3) | (g >> 2)) * ppu->brightness / 15;
-  ppu->pixelBuffer[row * 2048 + x * 8 + 6 + ppu->pixelOutputFormat] = ((r << 3) | (r >> 2)) * ppu->brightness / 15;
+  uint32_t *dest = (uint32_t*)&ppu->pixelBuffer[((y - 1) + (ppu->evenFrame ? 0 : 239)) * 2048 + x * 8];
+
+  dest[0] = ((((b2 << 3) | (b2 >> 2)) * bright_lut[ppu->brightness]) >> 16) << 0 |
+            ((((g2 << 3) | (g2 >> 2)) * bright_lut[ppu->brightness]) >> 16) << 8 |
+            ((((r2 << 3) | (r2 >> 2)) * bright_lut[ppu->brightness]) >> 16) << 16;
+
+  dest[1] = ((((b << 3) | (b >> 2)) * bright_lut[ppu->brightness]) >> 16) << 0 |
+            ((((g << 3) | (g >> 2)) * bright_lut[ppu->brightness]) >> 16) << 8 |
+            ((((r << 3) | (r >> 2)) * bright_lut[ppu->brightness]) >> 16) << 16;
 }
 
 static int ppu_getPixel(Ppu* ppu, int x, int y, bool sub, int* r, int* g, int* b) {

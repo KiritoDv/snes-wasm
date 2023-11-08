@@ -15,9 +15,6 @@
 #include "input.h"
 #include "statehandler.h"
 
-static const double apuCyclesPerMaster = (32040 * 32) / (1364 * 262 * 60.0);
-static const double apuCyclesPerMasterPal = (32040 * 32) / (1364 * 312 * 50.0);
-
 static void snes_runCycle(Snes* snes);
 static void snes_catchupApu(Snes* snes);
 static void snes_doAutoJoypad(Snes* snes);
@@ -65,7 +62,6 @@ void snes_reset(Snes* snes, bool hard) {
   snes->frames = 0;
   snes->cycles = 0;
   snes->syncCycle = 0;
-  snes->apuCatchupCycles = 0.0;
   snes->hIrqEnabled = false;
   snes->vIrqEnabled = false;
   snes->nmiEnabled = false;
@@ -100,7 +96,6 @@ void snes_handleState(Snes* snes, StateHandler* sh) {
   );
   sh_handleInts(sh, &snes->ramAdr, &snes->frames, NULL);
   sh_handleLongLongs(sh, &snes->cycles, &snes->syncCycle, NULL);
-  sh_handleDoubles(sh, &snes->apuCatchupCycles, NULL);
   sh_handleByteArray(sh, snes->ram, 0x20000);
   // components
   cpu_handleState(snes->cpu, sh);
@@ -148,7 +143,6 @@ void snes_syncCycles(Snes* snes, bool start, int syncCycles) {
 }
 
 static void snes_runCycle(Snes* snes) {
-  snes->apuCatchupCycles += (snes->palTiming ? apuCyclesPerMasterPal : apuCyclesPerMaster) * 2.0;
   snes->cycles += 2;
   // check for h/v timer irq's
   bool condition = (
@@ -229,9 +223,7 @@ static void snes_runCycle(Snes* snes) {
 }
 
 static void snes_catchupApu(Snes* snes) {
-  int catchupCycles = (int) snes->apuCatchupCycles;
-  int ranCycles = apu_runCycles(snes->apu, catchupCycles);
-  snes->apuCatchupCycles -= (double) ranCycles;
+  apu_runCycles(snes->apu);
 }
 
 static void snes_doAutoJoypad(Snes* snes) {
