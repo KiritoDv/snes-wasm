@@ -12,6 +12,7 @@
 #include "dma.h"
 #include "ppu.h"
 #include "cart.h"
+#include "cx4.h"
 #include "input.h"
 #include "statehandler.h"
 
@@ -199,13 +200,14 @@ static void snes_runCycle(Snes* snes) {
         if(!snes->palTiming) {
           // even interlace frame is 263 lines
           if((snes->vPos == 262 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 263) {
-            //if (snes->cart->type == 4) cx4_run();
+            if (snes->cart->type == 4) cx4_run();
             snes->vPos = 0;
             snes->frames++;
           }
 	    } else {
           // even interlace frame is 313 lines
           if((snes->vPos == 312 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 313) {
+            if (snes->cart->type == 4) cx4_run();
             snes->vPos = 0;
             snes->frames++;
           }
