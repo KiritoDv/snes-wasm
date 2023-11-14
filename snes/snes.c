@@ -22,6 +22,11 @@ static uint8_t snes_readReg(Snes* snes, uint16_t adr);
 static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val);
 static uint8_t snes_rread(Snes* snes, uint32_t adr); // wrapped by read, to set open bus
 static int snes_getAccessTime(Snes* snes, uint32_t adr);
+static void build_accesstime(Snes* snes, bool init);
+static void free_accesstime();
+
+static uint8_t *access_time;
+static int nextHoriEvent = 16; // always 16 at the beginning/end of a line (no need to state)
 
 Snes* snes_init(void) {
   Snes* snes = malloc(sizeof(Snes));
@@ -33,6 +38,7 @@ Snes* snes_init(void) {
   snes->input1 = input_init(snes);
   snes->input2 = input_init(snes);
   snes->palTiming = false;
+  build_accesstime(snes, true);
   return snes;
 }
 
@@ -44,6 +50,7 @@ void snes_free(Snes* snes) {
   cart_free(snes->cart);
   input_free(snes->input1);
   input_free(snes->input2);
+  free_accesstime();
   free(snes);
 }
 
@@ -81,6 +88,7 @@ void snes_reset(Snes* snes, bool hard) {
   snes->divideResult = 0x101;
   snes->fastMem = false;
   snes->openBus = 0;
+  nextHoriEvent = 16;
 }
 
 void snes_handleState(Snes* snes, StateHandler* sh) {
@@ -144,6 +152,8 @@ void snes_syncCycles(Snes* snes, bool start, int syncCycles) {
 
 static void snes_runCycle(Snes* snes) {
   snes->cycles += 2;
+  // increment position
+  snes->hPos += 2;
   // check for h/v timer irq's
   bool condition = (
     (snes->vIrqEnabled || snes->hIrqEnabled) &&
@@ -156,70 +166,84 @@ static void snes_runCycle(Snes* snes) {
   }
   snes->irqCondition = condition;
   // handle positional stuff
-  if(snes->hPos == 0) {
-    // end of hblank, do most vPos-tests
-    bool startingVblank = false;
-    if(snes->vPos == 0) {
-      // end of vblank
-      snes->inVblank = false;
-      snes->inNmi = false;
-      ppu_handleFrameStart(snes->ppu);
-    } else if(snes->vPos == 225) {
-      // ask the ppu if we start vblank now or at vPos 240 (overscan)
-      startingVblank = !ppu_checkOverscan(snes->ppu);
-    } else if(snes->vPos == 240){
-      // if we are not yet in vblank, we had an overscan frame, set startingVblank
-      if(!snes->inVblank) startingVblank = true;
+  if (snes->hPos == nextHoriEvent) {
+    switch (snes->hPos) {
+      case 16: {
+        nextHoriEvent = 512;
+        if(snes->vPos == 0) snes->dma->hdmaInitRequested = true;
+      } break;
+      case 512: {
+        nextHoriEvent = 1104;
+        // render the line halfway of the screen for better compatibility
+        if(!snes->inVblank && snes->vPos > 0) ppu_runLine(snes->ppu, snes->vPos);
+      } break;
+      case 1104: {
+        if(!snes->inVblank) snes->dma->hdmaRunRequested = true;
+        if(!snes->palTiming) {
+          // line 240 of odd frame with no interlace is 4 cycles shorter
+          // if((snes->hPos == 1360 && snes->vPos == 240 && !ppu_evenFrame() && !ppu_frameInterlace()) || snes->hPos == 1364) {
+          nextHoriEvent = (snes->vPos == 240 && !snes->ppu->evenFrame && !snes->ppu->frameInterlace) ? 1360 : 1364;
+        } else {
+          // line 311 of odd frame with interlace is 4 cycles longer
+          // if((snes->hPos == 1364 && (snes->vPos != 311 || ppu_evenFrame() || !ppu_frameInterlace())) || snes->hPos == 1368)
+          nextHoriEvent = (snes->vPos != 311 || snes->ppu->evenFrame || !snes->ppu->frameInterlace) ? 1364 : 1368;
+        }
+      } break;
+      case 1360:
+      case 1364:
+      case 1368: { // this is the end (of the h-line)
+        nextHoriEvent = 16;
+
+        snes->hPos = 0;
+        snes->vPos++;
+        if(!snes->palTiming) {
+          // even interlace frame is 263 lines
+          if((snes->vPos == 262 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 263) {
+            //if (snes->cart->type == 4) cx4_run();
+            snes->vPos = 0;
+            snes->frames++;
+          }
+	    } else {
+          // even interlace frame is 313 lines
+          if((snes->vPos == 312 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 313) {
+            snes->vPos = 0;
+            snes->frames++;
+          }
+        }
+
+        // end of hblank, do most vPos-tests
+        bool startingVblank = false;
+        if(snes->vPos == 0) {
+          // end of vblank
+          snes->inVblank = false;
+          snes->inNmi = false;
+          ppu_handleFrameStart(snes->ppu);
+        } else if(snes->vPos == 225) {
+          // ask the ppu if we start vblank now or at vPos 240 (overscan)
+          startingVblank = !ppu_checkOverscan(snes->ppu);
+        } else if(snes->vPos == 240){
+          // if we are not yet in vblank, we had an overscan frame, set startingVblank
+          if(!snes->inVblank) startingVblank = true;
+        }
+        if(startingVblank) {
+          // if we are starting vblank
+          ppu_handleVblank(snes->ppu);
+          snes->inVblank = true;
+          snes->inNmi = true;
+          if(snes->autoJoyRead) {
+            // TODO: this starts a little after start of vblank
+            snes->autoJoyTimer = 4224;
+            snes_doAutoJoypad(snes);
+          }
+          if(snes->nmiEnabled) {
+            cpu_nmi(snes->cpu);
+          }
+        }
+      } break;
     }
-    if(startingVblank) {
-      // if we are starting vblank
-      ppu_handleVblank(snes->ppu);
-      snes->inVblank = true;
-      snes->inNmi = true;
-      if(snes->autoJoyRead) {
-        // TODO: this starts a little after start of vblank
-        snes->autoJoyTimer = 4224;
-        snes_doAutoJoypad(snes);
-      }
-      if(snes->nmiEnabled) {
-        cpu_nmi(snes->cpu);
-      }
-    }
-  } else if(snes->hPos == 16) {
-    if(snes->vPos == 0) snes->dma->hdmaInitRequested = true;
-  } else if(snes->hPos == 512) {
-    // render the line halfway of the screen for better compatibility
-    if(!snes->inVblank && snes->vPos > 0) ppu_runLine(snes->ppu, snes->vPos);
-  } else if(snes->hPos == 1104) {
-    if(!snes->inVblank) snes->dma->hdmaRunRequested = true;
   }
   // handle autoJoyRead-timer
   if(snes->autoJoyTimer > 0) snes->autoJoyTimer -= 2;
-  // increment position
-  snes->hPos += 2;
-  if(!snes->palTiming) {
-    // line 240 of odd frame with no interlace is 4 cycles shorter
-    if((snes->hPos == 1360 && snes->vPos == 240 && !snes->ppu->evenFrame && !snes->ppu->frameInterlace) || snes->hPos == 1364) {
-      snes->hPos = 0;
-      snes->vPos++;
-      // even interlace frame is 263 lines
-      if((snes->vPos == 262 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 263) {
-        snes->vPos = 0;
-        snes->frames++;
-      }
-    }
-  } else {
-    // line 311 of odd frame with interlace is 4 cycles longer
-    if((snes->hPos == 1364 && (snes->vPos != 311 || snes->ppu->evenFrame || !snes->ppu->frameInterlace)) || snes->hPos == 1368) {
-      snes->hPos = 0;
-      snes->vPos++;
-      // even interlace frame is 313 lines
-      if((snes->vPos == 312 && (!snes->ppu->frameInterlace || !snes->ppu->evenFrame)) || snes->vPos == 313) {
-        snes->vPos = 0;
-        snes->frames++;
-      }
-    }
-  }
 }
 
 static void snes_catchupApu(Snes* snes) {
@@ -421,6 +445,9 @@ static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
       break;
     }
     case 0x420d: {
+      if (snes->fastMem != (val & 0x1)) {
+        build_accesstime(snes, false);
+      }
       snes->fastMem = val & 0x1;
       break;
     }
@@ -502,6 +529,19 @@ static int snes_getAccessTime(Snes* snes, uint32_t adr) {
   return (snes->fastMem && bank >= 0x80) ? 6 : 8; // depends on setting in banks 80+
 }
 
+static void build_accesstime(Snes* snes, bool init) {
+  if (init) {
+    access_time = (uint8_t *)malloc(0x1000000);
+  }
+  for (int i = 0; i < 0x1000000; i++) {
+    access_time[i] = snes_getAccessTime(snes, i);
+  }
+}
+
+static void free_accesstime() {
+  free(access_time);
+}
+
 uint8_t snes_read(Snes* snes, uint32_t adr) {
   uint8_t val = snes_rread(snes, adr);
   snes->openBus = val;
@@ -516,7 +556,7 @@ void snes_cpuIdle(void* mem, bool waiting) {
 
 uint8_t snes_cpuRead(void* mem, uint32_t adr) {
   Snes* snes = (Snes*) mem;
-  int cycles = snes_getAccessTime(snes, adr) - 4;
+  const int cycles = access_time[adr] - 4;
   dma_handleDma(snes->dma, cycles);
   snes_runCycles(snes, cycles);
   uint8_t rv = snes_read(snes, adr);
@@ -527,7 +567,7 @@ uint8_t snes_cpuRead(void* mem, uint32_t adr) {
 
 void snes_cpuWrite(void* mem, uint32_t adr, uint8_t val) {
   Snes* snes = (Snes*) mem;
-  int cycles = snes_getAccessTime(snes, adr);
+  const int cycles = access_time[adr];
   dma_handleDma(snes->dma, cycles);
   snes_runCycles(snes, cycles);
   snes_write(snes, adr, val);
