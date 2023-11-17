@@ -82,7 +82,7 @@ void snes_reset(Snes* snes, bool hard) {
   memset(snes->portAutoRead, 0, sizeof(snes->portAutoRead));
   snes->autoJoyRead = false;
   snes->autoJoyTimer = 0;
-  snes->ppuLatch = false;
+  snes->ppuLatch = true;
   snes->multiplyA = 0xff;
   snes->multiplyResult = 0xfe01;
   snes->divideA = 0xffff;

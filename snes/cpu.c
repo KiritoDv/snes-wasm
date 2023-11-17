@@ -123,7 +123,6 @@ void cpu_runOpcode(Cpu* cpu) {
     uint8_t opcode = cpu_readOpcode(cpu);
     cpu_doOpcode(cpu, opcode);
   }
-  cpu->intDelay = false;
 }
 
 void cpu_nmi(Cpu* cpu) {
@@ -135,23 +134,28 @@ void cpu_setIrq(Cpu* cpu, bool state) {
 }
 
 static uint8_t cpu_read(Cpu* cpu, uint32_t adr) {
+  cpu->intDelay = false;
   return cpu->read(cpu->mem, adr);
 }
 
 static void cpu_write(Cpu* cpu, uint32_t adr, uint8_t val) {
+  cpu->intDelay = false;
   cpu->write(cpu->mem, adr, val);
 }
 
 static void cpu_idle(Cpu* cpu) {
+  cpu->intDelay = false;
   cpu->idle(cpu->mem, false);
 }
 
 static void cpu_idleWait(Cpu* cpu) {
+  cpu->intDelay = false;
   cpu->idle(cpu->mem, true);
 }
 
 static void cpu_checkInt(Cpu* cpu) {
   cpu->intWanted = (cpu->nmiWanted || (cpu->irqWanted && !cpu->i)) && !cpu->intDelay;
+  cpu->intDelay = false;
 }
 
 static uint8_t cpu_readOpcode(Cpu* cpu) {
