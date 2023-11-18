@@ -431,9 +431,9 @@ static int ppu_getPixel(Ppu* ppu, int x, int y, bool sub, int* r, int* g, int* b
           if(ppu->mode == 2 || ppu->mode == 4 || ppu->mode == 6) {
             ppu_handleOPT(ppu, curLayer, &lx, &ly);
           }
-          if (x > layerCache[curLayer]) {
+          if (lx != layerCache[curLayer]) {
             ppu_getPixelForBgLayer(ppu, lx & 0x3ff, ly & 0x3ff, curLayer);
-            layerCache[curLayer] = x;
+            layerCache[curLayer] = lx;
           }
           pixel = (bg_prio_buf[curLayer] == curPriority) ? bg_pixel_buf[curLayer] : 0;
         }
