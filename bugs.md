@@ -26,6 +26,3 @@ Generally, at least the following general issues seem at play:
 - Power Drive
   - Broken graphics on name select screen
   - Cannot control once in-game, only pause
-- Tales of Phantasia
-  - Voices sound fine until music starts playing, then everything gets garbled.
-    (dma going past end of frame is causing audio samples to be overwritten)

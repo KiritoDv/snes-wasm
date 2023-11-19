@@ -127,7 +127,6 @@ void snes_runFrame(Snes* snes) {
   while(!snes->inVblank && frame == snes->frames) {
     cpu_runOpcode(snes->cpu);
   }
-  snes_catchupApu(snes); // catch up the apu after running
 }
 
 void snes_runCycles(Snes* snes, int cycles) {
@@ -228,7 +227,12 @@ static void snes_runCycle(Snes* snes) {
           if(!snes->inVblank) startingVblank = true;
         }
         if(startingVblank) {
-          // if we are starting vblank
+          // catch up the apu at end of emulated frame (we end frame @ start of vblank)
+          snes_catchupApu(snes);
+          // notify dsp of frame-end, because sometimes dma will extend much further past vblank (or even into the next frame)
+          // Megaman X2 (titlescreen animation), Tales of Phantasia (game demo), Actraiser 2 (fade-in @ bootup)
+		  dsp_newFrame(snes->apu->dsp);
+          // we are starting vblank
           ppu_handleVblank(snes->ppu);
           snes->inVblank = true;
           snes->inNmi = true;
