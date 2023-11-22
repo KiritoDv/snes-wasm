@@ -20,8 +20,8 @@ StateHandler* sh_init(bool saving, const uint8_t* data, int size) {
     memcpy(sh->data, data, size);
     sh->allocSize = size;
   } else {
-    sh->data = malloc(1024);
-    sh->allocSize = 1024;
+    sh->data = malloc(512 * 1024);
+    sh->allocSize = 512 * 1024;
   }
   return sh;
 }
