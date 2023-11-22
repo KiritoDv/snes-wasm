@@ -34,6 +34,7 @@ struct Snes {
   uint32_t frames;
   uint64_t cycles;
   uint64_t syncCycle;
+  uint32_t nextHoriEvent;
   // cpu handling
   // nmi / irq
   bool hIrqEnabled;

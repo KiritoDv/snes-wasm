@@ -27,7 +27,6 @@ static void build_accesstime(Snes* snes, bool init);
 static void free_accesstime();
 
 static uint8_t *access_time;
-static int nextHoriEvent = 16; // always 16 at the beginning/end of a line (no need to state)
 
 Snes* snes_init(void) {
   Snes* snes = malloc(sizeof(Snes));
@@ -89,7 +88,7 @@ void snes_reset(Snes* snes, bool hard) {
   snes->divideResult = 0x101;
   snes->fastMem = false;
   snes->openBus = 0;
-  nextHoriEvent = 16;
+  snes->nextHoriEvent = 16;
 }
 
 void snes_handleState(Snes* snes, StateHandler* sh) {
@@ -103,7 +102,7 @@ void snes_handleState(Snes* snes, StateHandler* sh) {
     &snes->portAutoRead[0], &snes->portAutoRead[1], &snes->portAutoRead[2], &snes->portAutoRead[3],
     &snes->autoJoyTimer, &snes->multiplyResult, &snes->divideA, &snes->divideResult, NULL
   );
-  sh_handleInts(sh, &snes->ramAdr, &snes->frames, NULL);
+  sh_handleInts(sh, &snes->ramAdr, &snes->frames, &snes->nextHoriEvent, NULL);
   sh_handleLongLongs(sh, &snes->cycles, &snes->syncCycle, NULL);
   sh_handleByteArray(sh, snes->ram, 0x20000);
   // components
@@ -117,12 +116,9 @@ void snes_handleState(Snes* snes, StateHandler* sh) {
 }
 
 void snes_runFrame(Snes* snes) {
-  // TODO: improve handling of dma's that take up entire vblank / frame
-  // run until we are starting a new frame (leaving vblank)
   while(snes->inVblank) {
     cpu_runOpcode(snes->cpu);
   }
-  // then run until we are at vblank, or we end up at next frame (DMA caused vblank to be skipped)
   uint32_t frame = snes->frames;
   while(!snes->inVblank && frame == snes->frames) {
     cpu_runOpcode(snes->cpu);
@@ -166,14 +162,14 @@ static void snes_runCycle(Snes* snes) {
   }
   snes->irqCondition = condition;
   // handle positional stuff
-  if (snes->hPos == nextHoriEvent) {
+  if (snes->hPos == snes->nextHoriEvent) {
     switch (snes->hPos) {
       case 16: {
-        nextHoriEvent = 512;
+        snes->nextHoriEvent = 512;
         if(snes->vPos == 0) snes->dma->hdmaInitRequested = true;
       } break;
       case 512: {
-        nextHoriEvent = 1104;
+        snes->nextHoriEvent = 1104;
         // render the line halfway of the screen for better compatibility
         if(!snes->inVblank && snes->vPos > 0) ppu_runLine(snes->ppu, snes->vPos);
       } break;
@@ -182,17 +178,17 @@ static void snes_runCycle(Snes* snes) {
         if(!snes->palTiming) {
           // line 240 of odd frame with no interlace is 4 cycles shorter
           // if((snes->hPos == 1360 && snes->vPos == 240 && !ppu_evenFrame() && !ppu_frameInterlace()) || snes->hPos == 1364) {
-          nextHoriEvent = (snes->vPos == 240 && !snes->ppu->evenFrame && !snes->ppu->frameInterlace) ? 1360 : 1364;
+          snes->nextHoriEvent = (snes->vPos == 240 && !snes->ppu->evenFrame && !snes->ppu->frameInterlace) ? 1360 : 1364;
         } else {
           // line 311 of odd frame with interlace is 4 cycles longer
           // if((snes->hPos == 1364 && (snes->vPos != 311 || ppu_evenFrame() || !ppu_frameInterlace())) || snes->hPos == 1368)
-          nextHoriEvent = (snes->vPos != 311 || snes->ppu->evenFrame || !snes->ppu->frameInterlace) ? 1364 : 1368;
+          snes->nextHoriEvent = (snes->vPos != 311 || snes->ppu->evenFrame || !snes->ppu->frameInterlace) ? 1364 : 1368;
         }
       } break;
       case 1360:
       case 1364:
       case 1368: { // this is the end (of the h-line)
-        nextHoriEvent = 16;
+        snes->nextHoriEvent = 16;
 
         snes->hPos = 0;
         snes->vPos++;
