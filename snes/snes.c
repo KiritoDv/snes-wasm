@@ -148,8 +148,6 @@ void snes_syncCycles(Snes* snes, bool start, int syncCycles) {
 
 static void snes_runCycle(Snes* snes) {
   snes->cycles += 2;
-  // increment position
-  snes->hPos += 2;
   // check for h/v timer irq's
   bool condition = (
     (snes->vIrqEnabled || snes->hIrqEnabled) &&
@@ -161,6 +159,8 @@ static void snes_runCycle(Snes* snes) {
     cpu_setIrq(snes->cpu, true);
   }
   snes->irqCondition = condition;
+  // increment position; must come after irq checks! (hagane, cybernator)
+  snes->hPos += 2;
   // handle positional stuff
   if (snes->hPos == snes->nextHoriEvent) {
     switch (snes->hPos) {
@@ -448,9 +448,9 @@ static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
     }
     case 0x420d: {
       if (snes->fastMem != (val & 0x1)) {
+        snes->fastMem = val & 0x1;
         build_accesstime(snes, false);
       }
-      snes->fastMem = val & 0x1;
       break;
     }
     default: {
