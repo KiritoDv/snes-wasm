@@ -28,6 +28,7 @@ struct Snes {
   // ram
   uint8_t ram[0x20000];
   uint32_t ramAdr;
+  uint8_t ramFill;
   // frame timing
   uint16_t hPos;
   uint16_t vPos;

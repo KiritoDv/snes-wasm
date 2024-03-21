@@ -23,7 +23,7 @@ static uint8_t snes_readReg(Snes* snes, uint16_t adr);
 static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val);
 static uint8_t snes_rread(Snes* snes, uint32_t adr); // wrapped by read, to set open bus
 static int snes_getAccessTime(Snes* snes, uint32_t adr);
-static void build_accesstime(Snes* snes, bool init);
+static void build_accesstime(Snes* snes, bool recalc);
 static void free_accesstime();
 
 static uint8_t *access_time;
@@ -38,7 +38,6 @@ Snes* snes_init(void) {
   snes->input1 = input_init(snes);
   snes->input2 = input_init(snes);
   snes->palTiming = false;
-  build_accesstime(snes, true);
   return snes;
 }
 
@@ -62,7 +61,7 @@ void snes_reset(Snes* snes, bool hard) {
   input_reset(snes->input1);
   input_reset(snes->input2);
   cart_reset(snes->cart);
-  if(hard) memset(snes->ram, 0, sizeof(snes->ram));
+  if(hard) memset(snes->ram, snes->ramFill, sizeof(snes->ram));
   snes->ramAdr = 0;
   snes->hPos = 0;
   snes->vPos = 0;
@@ -72,7 +71,7 @@ void snes_reset(Snes* snes, bool hard) {
   snes->hIrqEnabled = false;
   snes->vIrqEnabled = false;
   snes->nmiEnabled = false;
-  snes->hTimer = 0x1ff;
+  snes->hTimer = 0x1ff * 4;
   snes->vTimer = 0x1ff;
   snes->inNmi = false;
   snes->irqCondition = false;
@@ -89,6 +88,7 @@ void snes_reset(Snes* snes, bool hard) {
   snes->fastMem = false;
   snes->openBus = 0;
   snes->nextHoriEvent = 16;
+  build_accesstime(snes, false);
 }
 
 void snes_handleState(Snes* snes, StateHandler* sh) {
@@ -152,7 +152,7 @@ static void snes_runCycle(Snes* snes) {
   bool condition = (
     (snes->vIrqEnabled || snes->hIrqEnabled) &&
     (snes->vPos == snes->vTimer || !snes->vIrqEnabled) &&
-    (snes->hPos == snes->hTimer * 4 || !snes->hIrqEnabled)
+    (snes->hPos == snes->hTimer || !snes->hIrqEnabled)
   );
   if(!snes->irqCondition && condition) {
     snes->inIrq = true;
@@ -423,11 +423,11 @@ static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
       break;
     }
     case 0x4207: {
-      snes->hTimer = (snes->hTimer & 0x100) | val;
+	  snes->hTimer = (snes->hTimer & 0x400) | (val << 2);
       break;
     }
     case 0x4208: {
-      snes->hTimer = (snes->hTimer & 0x0ff) | ((val & 1) << 8);
+	  snes->hTimer = (snes->hTimer & 0x03fc) | ((val & 1) << 10);
       break;
     }
     case 0x4209: {
@@ -449,7 +449,7 @@ static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
     case 0x420d: {
       if (snes->fastMem != (val & 0x1)) {
         snes->fastMem = val & 0x1;
-        build_accesstime(snes, false);
+        build_accesstime(snes, true);
       }
       break;
     }
@@ -531,11 +531,12 @@ static int snes_getAccessTime(Snes* snes, uint32_t adr) {
   return (snes->fastMem && bank >= 0x80) ? 6 : 8; // depends on setting in banks 80+
 }
 
-static void build_accesstime(Snes* snes, bool init) {
-  if (init) {
-    access_time = (uint8_t *)malloc(0x1000000);
+static void build_accesstime(Snes* snes, bool recalc) {
+  int start = (recalc) ? 0x800000 : 0; // recalc only updates "fastMem" area
+  if (access_time == NULL) {
+	access_time = (uint8_t *)malloc(0x1000000);
   }
-  for (int i = 0; i < 0x1000000; i++) {
+  for (int i = start; i < 0x1000000; i++) {
     access_time[i] = snes_getAccessTime(snes, i);
   }
 }

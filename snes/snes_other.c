@@ -119,6 +119,10 @@ bool snes_loadRom(Snes* snes, const uint8_t* data, int length) {
     snes->cart, headers[used].cartType,
     newData, newLength, headers[used].chips > 0 ? headers[used].ramSize : 0
   );
+  snes->ramFill = 0x00; // default, 0-fill
+  if (strcmp(headers[used].name, "DEATH BRADE") || strcmp(headers[used].name, "POWERDRIVE")) {
+	  snes->ramFill = 0xff;
+  }
   snes_reset(snes, true); // reset after loading
   snes->palTiming = headers[used].pal; // set region
   free(newData);
@@ -206,6 +210,12 @@ static void readHeader(const uint8_t* data, int length, int location, CartHeader
     }
   }
   header->name[21] = 0;
+  // clean name (strip end space)
+  int slen = strlen(header->name);
+  while (slen > 0 && header->name[slen-1] == ' ') {
+	  header->name[slen-1] = '\0';
+	  slen--;
+  }
   // read rest
   header->speed = data[location + 0x15] >> 4;
   header->type = data[location + 0x15] & 0xf;
