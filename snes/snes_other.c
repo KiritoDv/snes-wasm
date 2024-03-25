@@ -120,7 +120,7 @@ bool snes_loadRom(Snes* snes, const uint8_t* data, int length) {
     newData, newLength, headers[used].chips > 0 ? headers[used].ramSize : 0
   );
   snes->ramFill = 0x00; // default, 0-fill
-  if (strcmp(headers[used].name, "DEATH BRADE") || strcmp(headers[used].name, "POWERDRIVE")) {
+  if (!strcmp(headers[used].name, "DEATH BRADE") || !strcmp(headers[used].name, "POWERDRIVE")) {
 	  snes->ramFill = 0xff;
   }
   snes_reset(snes, true); // reset after loading
