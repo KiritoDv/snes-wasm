@@ -293,6 +293,7 @@ void ppu_runLine(Ppu* ppu, int line) {
   // evaluate sprites
   memset(ppu->objPixelBuffer, 0, sizeof(ppu->objPixelBuffer));
   if(!ppu->forcedBlank) ppu_evaluateSprites(ppu, line - 1);
+  // NOTE: if frameskipping, return here. (ppu_evaluateSprites() must run regardless)
   // actual line
   if(ppu->mode == 7) ppu_calculateMode7Starts(ppu, line);
   layerCache[0] = layerCache[1] = layerCache[2] = layerCache[3] = -1;
@@ -319,6 +320,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
   if(!ppu->forcedBlank) {
     int mainLayer = ppu_getPixel(ppu, x, y, false, &r, &g, &b);
     bool colorWindowState = bg_window_state[5];
+    bool bClipIfHires = false;
     if(
       ppu->clipMode == 3 ||
       (ppu->clipMode == 2 && colorWindowState) ||
@@ -328,6 +330,7 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
       r = 0;
       g = 0;
       b = 0;
+      bClipIfHires = true;
     }
     int secondLayer = 5; // backdrop
     bool mathEnabled = mainLayer < 6 && ppu->mathEnabled[mainLayer] && !(
@@ -335,10 +338,11 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
       (ppu->preventMathMode == 2 && colorWindowState) ||
       (ppu->preventMathMode == 1 && !colorWindowState)
     );
-    if((mathEnabled && ppu->addSubscreen) || ppu->pseudoHires || ppu->mode == 5 || ppu->mode == 6) {
+    const bool bHighRes = ppu->pseudoHires || ppu->mode == 5 || ppu->mode == 6;
+    if((mathEnabled && ppu->addSubscreen) || bHighRes) {
       secondLayer = ppu_getPixel(ppu, x, y, true, &r2, &g2, &b2);
+      if (bHighRes && bClipIfHires) { r2 = g2 = b2 = 0; }
     }
-    // TODO: subscreen pixels can be clipped to black as well
     // TODO: math for subscreen pixels (add/sub sub to main, in hires mode)
     if(mathEnabled) {
       if(ppu->subtractColor) {
@@ -350,6 +354,11 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
           r -= ppu->fixedColorR;
           g -= ppu->fixedColorG;
           b -= ppu->fixedColorB;
+          if (bHighRes) {
+            r2 = color_clamp_lut_i20[r2 - ppu->fixedColorR];
+            g2 = color_clamp_lut_i20[g2 - ppu->fixedColorG];
+            b2 = color_clamp_lut_i20[b2 - ppu->fixedColorB];
+          }
         }
       } else {
         if (ppu->addSubscreen && secondLayer != 5) {
@@ -360,6 +369,11 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
           r += ppu->fixedColorR;
           g += ppu->fixedColorG;
           b += ppu->fixedColorB;
+          if (bHighRes) {
+            r2 = color_clamp_lut_i20[r2 + ppu->fixedColorR];
+            g2 = color_clamp_lut_i20[g2 + ppu->fixedColorG];
+            b2 = color_clamp_lut_i20[b2 + ppu->fixedColorB];
+          }
         }
       }
       if(halfColor && (secondLayer != 5 || !ppu->addSubscreen)) {
@@ -371,7 +385,12 @@ static void ppu_handlePixel(Ppu* ppu, int x, int y) {
       g = color_clamp_lut_i20[g];
       b = color_clamp_lut_i20[b];
     }
-    if(!(ppu->pseudoHires || ppu->mode == 5 || ppu->mode == 6)) {
+    if(ppu->pseudoHires && ppu->mode < 5) {
+      r = r2 = (r + r2) >> 1;
+      b = b2 = (b + b2) >> 1;
+      g = g2 = (g + g2) >> 1;
+    }
+    if(bHighRes == false) {
       r2 = r; g2 = g; b2 = b;
     }
   }
