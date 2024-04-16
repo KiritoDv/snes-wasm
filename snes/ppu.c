@@ -649,7 +649,7 @@ static bool ppu_getWindowState(Ppu* ppu, int layer, int x) {
 }
 
 static void ppu_evaluateSprites(Ppu* ppu, int line) {
-  // TODO: rectangular sprites, wierdness with sprites at -256
+  // TODO: rectangular sprites
   uint8_t index = ppu->objPriority ? (ppu->oamAdr & 0xfe) : 0;
   int spritesFound = 0;
   int tilesFound = 0;
@@ -667,7 +667,7 @@ static void ppu_evaluateSprites(Ppu* ppu, int line) {
       x |= ((ppu->highOam[index >> 3] >> (index & 7)) & 1) << 8;
       if(x > 255) x -= 512;
       // if in x-range, record
-      if(x > -spriteSize) {
+      if(x > -spriteSize || x == -256) {
         // break if we found 32 sprites already
         spritesFound++;
         if(spritesFound > 32) {
