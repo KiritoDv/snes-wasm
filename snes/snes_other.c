@@ -119,9 +119,13 @@ bool snes_loadRom(Snes* snes, const uint8_t* data, int length) {
     snes->cart, headers[used].cartType,
     newData, newLength, headers[used].chips > 0 ? headers[used].ramSize : 0
   );
+  // -- cart specific config --
   snes->ramFill = 0x00; // default, 0-fill
   if (!strcmp(headers[used].name, "DEATH BRADE") || !strcmp(headers[used].name, "POWERDRIVE")) {
-	  snes->ramFill = 0xff;
+    snes->ramFill = 0xff;
+  }
+  if (!strcmp(headers[used].name, "ASHITANO JOE") || !strcmp(headers[used].name, "SUCCESS JOE")) {
+    snes->ramFill = 0x3f; // game prefers 0x3f fill
   }
   snes_reset(snes, true); // reset after loading
   snes->palTiming = headers[used].pal; // set region
