@@ -73,6 +73,7 @@ void snes_reset(Snes* snes, bool hard) {
   snes->nmiEnabled = false;
   snes->hTimer = 0x1ff * 4;
   snes->vTimer = 0x1ff;
+  snes->hvTimer = 0;
   snes->inNmi = false;
   snes->irqCondition = false;
   snes->inIrq = false;
@@ -102,7 +103,7 @@ void snes_handleState(Snes* snes, StateHandler* sh) {
     &snes->portAutoRead[0], &snes->portAutoRead[1], &snes->portAutoRead[2], &snes->portAutoRead[3],
     &snes->autoJoyTimer, &snes->multiplyResult, &snes->divideA, &snes->divideResult, NULL
   );
-  sh_handleInts(sh, &snes->ramAdr, &snes->frames, &snes->nextHoriEvent, NULL);
+  sh_handleInts(sh, &snes->hvTimer, &snes->ramAdr, &snes->frames, &snes->nextHoriEvent, NULL);
   sh_handleLongLongs(sh, &snes->cycles, &snes->syncCycle, NULL);
   sh_handleByteArray(sh, snes->ram, 0x20000);
   // components
@@ -148,17 +149,26 @@ void snes_syncCycles(Snes* snes, bool start, int syncCycles) {
 
 static void snes_runCycle(Snes* snes) {
   snes->cycles += 2;
-  // check for h/v timer irq's
-  bool condition = (
-    (snes->vIrqEnabled || snes->hIrqEnabled) &&
-    (snes->vPos == snes->vTimer || !snes->vIrqEnabled) &&
-    (snes->hPos == snes->hTimer || !snes->hIrqEnabled)
-  );
-  if(!snes->irqCondition && condition) {
-    snes->inIrq = true;
-    cpu_setIrq(snes->cpu, true);
+  if ((snes->hPos & 2) == 0) {
+    // check for h/v timer irq's every 4 cycles
+    if (snes->hvTimer > 0) {
+      snes->hvTimer -= 2;
+      if (snes->hvTimer == 0) {
+        snes->inIrq = true;
+        cpu_setIrq(snes->cpu, true);
+      }
+    }
+    const bool condition = (
+      (snes->vIrqEnabled || snes->hIrqEnabled) &&
+      (snes->vPos == snes->vTimer || !snes->vIrqEnabled) &&
+      (snes->hPos == snes->hTimer || !snes->hIrqEnabled)
+    );
+    if(!snes->irqCondition && condition) {
+      // when h/v condition, there is a slight delay before irq hits (mecarobot golf)
+      snes->hvTimer = 4;
+    }
+    snes->irqCondition = condition;
   }
-  snes->irqCondition = condition;
   // increment position; must come after irq checks! (hagane, cybernator)
   snes->hPos += 2;
   // handle positional stuff
@@ -560,10 +570,9 @@ void snes_cpuIdle(void* mem, bool waiting) {
 uint8_t snes_cpuRead(void* mem, uint32_t adr) {
   Snes* snes = (Snes*) mem;
   const int cycles = access_time[adr] - 4;
-  dma_handleDma(snes->dma, cycles);
+  dma_handleDma(snes->dma, cycles + 4);
   snes_runCycles(snes, cycles);
   uint8_t rv = snes_read(snes, adr);
-  dma_handleDma(snes->dma, 4);
   snes_runCycles(snes, 4);
   return rv;
 }

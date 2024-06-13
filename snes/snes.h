@@ -43,6 +43,7 @@ struct Snes {
   bool nmiEnabled;
   uint16_t hTimer;
   uint16_t vTimer;
+  uint32_t hvTimer;
   bool inNmi;
   bool irqCondition;
   bool inIrq;

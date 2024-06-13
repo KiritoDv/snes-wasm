@@ -11,8 +11,5 @@ The following is a non-exhaustive list of games that have emulation bugs. Note t
   - Bugs due to not emulating mid-scanline effects
 - Firepower 2000
   - Garbage line on title screen background
-- Mecarobot Golf
-  - Some odd flashing of the ground in-game during movement
-  - Sometimes freezes (?, hard to reproduce, happened once in lesson mode)
-- Jurassic Park
-  - Sides of screen are not masked properly
+- Oscar
+  - Occasional missing sounds on coins/powerups
