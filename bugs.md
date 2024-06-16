@@ -11,5 +11,3 @@ The following is a non-exhaustive list of games that have emulation bugs. Note t
   - Bugs due to not emulating mid-scanline effects
 - Firepower 2000
   - Garbage line on title screen background
-- Oscar
-  - Occasional missing sounds on coins/powerups

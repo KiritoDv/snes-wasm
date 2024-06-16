@@ -196,7 +196,7 @@ void dsp_cycle(Dsp* dsp) {
     dsp_cycleChannel(dsp, i);
   }
   dsp_handleEcho(dsp); // also applies master volume
-  dsp->counter = dsp->counter == 0 ? 30720 : dsp->counter - 1;
+  dsp->counter = dsp->counter == 0 ? 30720 - 1 : dsp->counter - 1;
   dsp_handleNoise(dsp);
   dsp->evenCycle = !dsp->evenCycle;
   // handle mute flag
@@ -287,7 +287,6 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
       dsp->channel[ch].blockOffset = 1;
       dsp->channel[ch].bufferOffset = 0;
       dsp->channel[ch].brrHeader = 0;
-      dsp->ram[0x7c] &= ~(1 << ch); // clear ENDx
     }
     dsp->channel[ch].gain = 0;
     dsp->channel[ch].startDelay--;
@@ -319,6 +318,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
       dsp->channel[ch].startDelay = 5;
       dsp->channel[ch].adsrState = 0; // go to attack
       dsp->channel[ch].keyOn = false;
+      dsp->ram[0x7c] &= ~(1 << ch); // clear ENDx
     }
   }
   // handle envelope
