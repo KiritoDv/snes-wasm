@@ -22,6 +22,7 @@ Cart* cart_init(Snes* snes) {
   Cart* cart = malloc(sizeof(Cart));
   cart->snes = snes;
   cart->type = 0;
+  cart->hasBattery = 0;
   cart->rom = NULL;
   cart->romSize = 0;
   cart->ram = NULL;
@@ -69,8 +70,9 @@ void cart_handleState(Cart* cart, StateHandler* sh) {
   }
 }
 
-void cart_load(Cart* cart, int type, uint8_t* rom, int romSize, int ramSize) {
+void cart_load(Cart* cart, int type, uint8_t* rom, int romSize, int ramSize, bool hasBattery) {
   cart->type = type;
+  cart->hasBattery = hasBattery;
   if(cart->rom != NULL) free(cart->rom);
   if(cart->ram != NULL) free(cart->ram);
   cart->rom = malloc(romSize);
@@ -86,6 +88,7 @@ void cart_load(Cart* cart, int type, uint8_t* rom, int romSize, int ramSize) {
 }
 
 bool cart_handleBattery(Cart* cart, bool save, uint8_t* data, int* size) {
+  if(cart->hasBattery == false) return false;
   if(save) {
     *size = cart->ramSize;
     if(data == NULL) return true;

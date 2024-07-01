@@ -43,6 +43,7 @@ typedef struct CartHeader {
   int16_t score; // score for header, to see which mapping is most likely
   bool pal; // if this is a rom for PAL regions instead of NTSC
   uint8_t cartType; // calculated type
+  bool hasBattery; // battery
 } CartHeader;
 
 static void readHeader(const uint8_t* data, int length, int location, CartHeader* header);
@@ -112,12 +113,13 @@ bool snes_loadRom(Snes* snes, const uint8_t* data, int length) {
   printf("\"%s\"\n", headers[used].name);
   int bankSize = used >= 2 ? 0x10000 : 0x8000; // 0, 1: LoROM, else HiROM
   printf(
-    "%s banks: %d, ramsize: %d, coprocessor: %x\n",
-    bankSize == 0x8000 ? "32K" : "64K", newLength / bankSize, headers[used].chips > 0 ? headers[used].ramSize : 0, headers[used].exCoprocessor
+    "%s banks: %d, ramsize: %d%s, coprocessor: %x\n",
+    bankSize == 0x8000 ? "32K" : "64K", newLength / bankSize, headers[used].chips > 0 ? headers[used].ramSize : 0, (headers[used].hasBattery) ? " (battery-backed)" : "", headers[used].exCoprocessor
   );
   cart_load(
     snes->cart, headers[used].cartType,
-    newData, newLength, headers[used].chips > 0 ? headers[used].ramSize : 0
+    newData, newLength, headers[used].chips > 0 ? headers[used].ramSize : 0,
+    headers[used].hasBattery
   );
   // -- cart specific config --
   snes->ramFill = 0x00; // default, 0-fill
@@ -225,6 +227,7 @@ static void readHeader(const uint8_t* data, int length, int location, CartHeader
   header->type = data[location + 0x15] & 0xf;
   header->coprocessor = data[location + 0x16] >> 4;
   header->chips = data[location + 0x16] & 0xf;
+  header->hasBattery = (header->chips == 0x02 || header->chips == 0x05 || header->chips == 0x06);
   header->romSize = 0x400 << data[location + 0x17];
   header->ramSize = 0x400 << data[location + 0x18];
   header->region = data[location + 0x19];
