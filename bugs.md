@@ -10,4 +10,4 @@ The following is a non-exhaustive list of games that have emulation bugs. Note t
 - Air Strike Patrol
   - Bugs due to not emulating mid-scanline effects
 - Firepower 2000
-  - Garbage line on title screen background
+  - Garbage line on title screen background (needs per-cycle rendering instead of per-line, like Air Strike Patrol)

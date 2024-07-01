@@ -110,16 +110,16 @@ Minimizing or hiding the window can cause high CPU usage as this can cause v-syn
 
 ## Compatibility
 
-The emulator currently only supports regular LoROM, HiROM and ExHiROM games (no co-processors and such).
+The emulator currently only supports regular LoROM, ExLoROM, HiROM and ExHiROM games.  Capcom CX4 is the only co-processor emulated at this time.
 SPC files can not be loaded yet, but are planned.
 
-This emulator is definitely not fully accurate. The PPU renders per scanline, so mid-scanline effects are not supported. The DSP executes on a per-sample basis. The SPC and CPU-side timing should be cycle-accurate now, but the exact timing of certain event is still somewhat off. Communication between the CPU and SPC is also not cycle-accurate.
+This emulator is definitely not fully accurate. The PPU renders per scanline, so mid-scanline effects are not supported. The DSP executes on a per-sample basis. The SPC and CPU-side timing should be cycle-accurate now.
 
 Quite a few TODO's are scattered throughout the code for things that are currently not quite fully emulated, mostly related to edge cases and some lesser-used PPU features.
 
 Some things that are not emulated at all are full emulation-mode for the 65816, and the test-register ($f0) for the SPC.
 
-Some games that I have tested seem to run without obvious issues, although some games do seem to glitch somewhat or freeze. `bugs.md` contains a non-exhaustive list of games that have emulation-bugs.
+Some games that I have tested seem to run without obvious issues, `bugs.md` contains a non-exhaustive list of games that have emulation-bugs.
 
 ## License
 
