@@ -1,17 +1,17 @@
 
-CC = clang
-CFLAGS = -O3 -I ./snes -I ./zip
+CC = emcc
+
+CFLAGS = -O3 -I ./snes -I ./zip -sUSE_SDL=2 -sEXPORTED_FUNCTIONS=_loadRawRom,_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,cwrap -sALLOW_MEMORY_GROWTH
 
 WINDRES = windres
 
-execname = lakesnes
-sdlflags = `sdl2-config --cflags --libs`
+execname = web/snesweb.html
 
 appname = LakeSnes.app
 appexecname = lakesnes_app
 appsdlflags = -framework SDL2 -F sdl2 -rpath @executable_path/../Frameworks
 
-winexecname = lakesnes.exe
+winexecname = snesweb.exe
 
 cfiles = snes/spc.c snes/dsp.c snes/apu.c snes/cpu.c snes/dma.c snes/ppu.c snes/cart.c snes/cx4.c snes/input.c snes/statehandler.c snes/snes.c snes/snes_other.c \
  zip/zip.c tracing.c main.c
@@ -23,7 +23,7 @@ hfiles = snes/spc.h snes/dsp.h snes/apu.h snes/cpu.h snes/dma.h snes/ppu.h snes/
 all: $(execname)
 
 $(execname): $(cfiles) $(hfiles)
-	$(CC) $(CFLAGS) -o $@ $(cfiles) $(sdlflags)
+	$(CC) $(CFLAGS) -o $@ $(cfiles)
 
 $(appexecname): $(cfiles) $(hfiles)
 	$(CC) $(CFLAGS) -o $@ $(cfiles) $(appsdlflags) -D SDL2SUBDIR

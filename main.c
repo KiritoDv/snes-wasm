@@ -20,6 +20,8 @@
 #include "snes.h"
 #include "tracing.h"
 
+#include <emscripten.h>
+
 /* depends on behaviour:
 casting uintX_t to/from intX_t does 'expceted' unsigned<->signed conversion
   ((int8_t) 255) == -1
@@ -61,8 +63,18 @@ static struct {
   char* statePath;
 } glb = {};
 
+bool running = true;
+bool paused = false;
+bool runOne = false;
+bool turbo = false;
+int fullscreenFlags = 0;
+// timing
+uint64_t countFreq;
+uint64_t lastCount;
+float timeAdder = 0.0;
+
 static uint8_t* readFile(const char* name, int* length);
-static void loadRom(const char* path);
+void loadRom(const char* path);
 static void closeRom(void);
 static void setPaths(const char* path);
 static void setTitle(const char* path);
@@ -70,100 +82,16 @@ static bool checkExtention(const char* name, bool forZip);
 static void playAudio(void);
 static void renderScreen(void);
 static void handleInput(int keyCode, bool pressed);
+EMSCRIPTEN_KEEPALIVE
+void* malloc(size_t size);
 
-int main(int argc, char** argv) {
-  // set up SDL
-  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-    printf("Failed to init SDL: %s\n", SDL_GetError());
-    return 1;
-  }
-  glb.window = SDL_CreateWindow("LakeSnes", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 512, 480, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  if(glb.window == NULL) {
-    printf("Failed to create window: %s\n", SDL_GetError());
-    return 1;
-  }
-  glb.renderer = SDL_CreateRenderer(glb.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-  if(glb.renderer == NULL) {
-    printf("Failed to create renderer: %s\n", SDL_GetError());
-    return 1;
-  }
-  SDL_RenderSetLogicalSize(glb.renderer, 512, 480); // preserve aspect ratio
-  glb.texture = SDL_CreateTexture(glb.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 512, 480);
-  if(glb.texture == NULL) {
-    printf("Failed to create texture: %s\n", SDL_GetError());
-    return 1;
-  }
-  // get pref path, create directories
-  glb.prefPath = SDL_GetPrefPath("", "LakeSnes");
-  char* savePath = malloc(strlen(glb.prefPath) + 6); // "saves" (5) + '\0'
-  char* statePath = malloc(strlen(glb.prefPath) + 7); // "states" (6) + '\0'
-  strcpy(savePath, glb.prefPath);
-  strcat(savePath, "saves");
-  strcpy(statePath, glb.prefPath);
-  strcat(statePath, "states");
-#ifdef _WIN32
-  mkdir(savePath); // ignore mkdir error, this (should) mean that the directory already exists
-  mkdir(statePath);
-  glb.pathSeparator = "\\";
-#else
-  mkdir(savePath, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-  mkdir(statePath, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-  glb.pathSeparator = "/";
-#endif
-  free(savePath);
-  free(statePath);
-  // set up audio
-  glb.audioFrequency = 48000;
-  SDL_AudioSpec want, have;
-  SDL_memset(&want, 0, sizeof(want));
-  want.freq = glb.audioFrequency;
-  want.format = AUDIO_S16;
-  want.channels = 2;
-  want.samples = 2048;
-  want.callback = NULL; // use queue
-  glb.audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-  if(glb.audioDevice == 0) {
-    printf("Failed to open audio device: %s\n", SDL_GetError());
-    return 1;
-  }
-  glb.audioBuffer = malloc(glb.audioFrequency / 50 * 4); // *2 for stereo, *2 for sizeof(int16)
-  SDL_PauseAudioDevice(glb.audioDevice, 0);
-  // print version
-  SDL_version version;
-  SDL_version compiledVersion;
-  SDL_GetVersion(&version);
-  SDL_VERSION(&compiledVersion);
-  printf(
-    "LakeSnes - Running with SDL %d.%d.%d (compiled with %d.%d.%d)\n",
-    version.major, version.minor, version.patch, compiledVersion.major, compiledVersion.minor, compiledVersion.patch
-  );
-  // init snes, load rom
-  glb.snes = snes_init();
-  glb.wantedFrames = 1.0 / 60.0;
-  glb.wantedSamples = glb.audioFrequency / 60;
-  glb.loaded = false;
-  glb.romName = NULL;
-  glb.savePath = NULL;
-  glb.statePath = NULL;
-  if(argc >= 2) {
-    loadRom(argv[1]);
-  } else {
-    puts("No rom loaded");
-  }
-  // sdl loop
-  bool running = true;
-  bool paused = false;
-  bool runOne = false;
-  bool turbo = false;
+EMSCRIPTEN_KEEPALIVE
+void free(void* ptr);
+
+static void update(void){
   SDL_Event event;
-  int fullscreenFlags = 0;
-  // timing
-  uint64_t countFreq = SDL_GetPerformanceFrequency();
-  uint64_t lastCount = SDL_GetPerformanceCounter();
-  float timeAdder = 0.0;
 
-  while(running) {
-    while(SDL_PollEvent(&event)) {
+  while(SDL_PollEvent(&event)) {
       switch(event.type) {
         case SDL_KEYDOWN: {
           switch(event.key.keysym.sym) {
@@ -298,7 +226,89 @@ int main(int argc, char** argv) {
     SDL_RenderClear(glb.renderer);
     SDL_RenderCopy(glb.renderer, glb.texture, NULL, NULL);
     SDL_RenderPresent(glb.renderer); // should vsync
+}
+
+int main(int argc, char** argv) {
+  // set up SDL
+  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+    printf("Failed to init SDL: %s\n", SDL_GetError());
+    return 1;
   }
+  glb.window = SDL_CreateWindow("LakeSnes", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 512 * 2, 480 * 2, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+  if(glb.window == NULL) {
+    printf("Failed to create window: %s\n", SDL_GetError());
+    return 1;
+  }
+  glb.renderer = SDL_CreateRenderer(glb.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  if(glb.renderer == NULL) {
+    printf("Failed to create renderer: %s\n", SDL_GetError());
+    return 1;
+  }
+  SDL_RenderSetLogicalSize(glb.renderer, 512, 480); // preserve aspect ratio
+  glb.texture = SDL_CreateTexture(glb.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 512, 480);
+  if(glb.texture == NULL) {
+    printf("Failed to create texture: %s\n", SDL_GetError());
+    return 1;
+  }
+  // get pref path, create directories
+  glb.prefPath = SDL_GetPrefPath("", "LakeSnes");
+  char* savePath = malloc(strlen(glb.prefPath) + 6); // "saves" (5) + '\0'
+  char* statePath = malloc(strlen(glb.prefPath) + 7); // "states" (6) + '\0'
+  strcpy(savePath, glb.prefPath);
+  strcat(savePath, "saves");
+  strcpy(statePath, glb.prefPath);
+  strcat(statePath, "states");
+#ifdef _WIN32
+  mkdir(savePath); // ignore mkdir error, this (should) mean that the directory already exists
+  mkdir(statePath);
+  glb.pathSeparator = "\\";
+#else
+  mkdir(savePath, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+  mkdir(statePath, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+  glb.pathSeparator = "/";
+#endif
+  free(savePath);
+  free(statePath);
+  // set up audio
+  glb.audioFrequency = 48000;
+  SDL_AudioSpec want, have;
+  SDL_memset(&want, 0, sizeof(want));
+  want.freq = glb.audioFrequency;
+  want.format = AUDIO_S16;
+  want.channels = 2;
+  want.samples = 2048;
+  want.callback = NULL; // use queue
+  glb.audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+  if(glb.audioDevice == 0) {
+    printf("Failed to open audio device: %s\n", SDL_GetError());
+    return 1;
+  }
+  glb.audioBuffer = malloc(glb.audioFrequency / 50 * 4); // *2 for stereo, *2 for sizeof(int16)
+  SDL_PauseAudioDevice(glb.audioDevice, 0);
+  // print version
+  SDL_version version;
+  SDL_version compiledVersion;
+  SDL_GetVersion(&version);
+  SDL_VERSION(&compiledVersion);
+  printf(
+    "LakeSnes - Running with SDL %d.%d.%d (compiled with %d.%d.%d)\n",
+    version.major, version.minor, version.patch, compiledVersion.major, compiledVersion.minor, compiledVersion.patch
+  );
+  // init snes, load rom
+  glb.snes = snes_init();
+  glb.wantedFrames = 1.0 / 60.0;
+  glb.wantedSamples = glb.audioFrequency / 60;
+  glb.loaded = false;
+  glb.romName = NULL;
+  glb.savePath = NULL;
+  glb.statePath = NULL;
+
+  loadRom("web/smw.sfc");    
+  
+  countFreq = SDL_GetPerformanceFrequency();
+  lastCount = SDL_GetPerformanceCounter();
+  emscripten_set_main_loop(update, -1, 1);
+
   // close rom (saves battery)
   closeRom();
   // free snes
@@ -367,7 +377,34 @@ static bool checkExtention(const char* name, bool forZip) {
   return false;
 }
 
-static void loadRom(const char* path) {
+void loadRawRom(uint8_t* file, int length, char* path){
+  closeRom();
+  // load new rom
+  if(snes_loadRom(glb.snes, file, length)) {
+    // get rom name and paths, set title
+    setPaths(path);
+    setTitle(glb.romName);
+    // set wantedFrames and wantedSamples
+    glb.wantedFrames = 1.0 / (glb.snes->palTiming ? 50.0 : 60.0);
+    glb.wantedSamples = glb.audioFrequency / (glb.snes->palTiming ? 50 : 60);
+    glb.loaded = true;
+    // load battery for loaded rom
+    int size = 0;
+    uint8_t* saveData = readFile(glb.savePath, &size);
+    if(saveData != NULL) {
+      if(snes_loadBattery(glb.snes, saveData, size)) {
+        puts("Loaded battery data");
+      } else {
+        puts("Failed to load battery data");
+      }
+      free(saveData);
+    }
+  } else { // else, rom load failed, old rom still loaded
+    printf("Failed to load rom\n");
+  }
+}
+
+void loadRom(const char* path) {
   // zip library from https://github.com/kuba--/zip
   int length = 0;
   uint8_t* file = NULL;
@@ -397,28 +434,7 @@ static void loadRom(const char* path) {
     return;
   }
   // close currently loaded rom (saves battery)
-  closeRom();
-  // load new rom
-  if(snes_loadRom(glb.snes, file, length)) {
-    // get rom name and paths, set title
-    setPaths(path);
-    setTitle(glb.romName);
-    // set wantedFrames and wantedSamples
-    glb.wantedFrames = 1.0 / (glb.snes->palTiming ? 50.0 : 60.0);
-    glb.wantedSamples = glb.audioFrequency / (glb.snes->palTiming ? 50 : 60);
-    glb.loaded = true;
-    // load battery for loaded rom
-    int size = 0;
-    uint8_t* saveData = readFile(glb.savePath, &size);
-    if(saveData != NULL) {
-      if(snes_loadBattery(glb.snes, saveData, size)) {
-        puts("Loaded battery data");
-      } else {
-        puts("Failed to load battery data");
-      }
-      free(saveData);
-    }
-  } // else, rom load failed, old rom still loaded
+  loadRawRom(file, length, path);
   free(file);
 }
 
