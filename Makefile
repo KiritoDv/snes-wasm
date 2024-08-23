@@ -1,7 +1,7 @@
 
 CC = emcc
 
-CFLAGS = -O3 -I ./snes -I ./zip -sUSE_SDL=2 -sEXPORTED_FUNCTIONS=_loadRawRom,_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,cwrap -sALLOW_MEMORY_GROWTH
+CFLAGS = -O3 -I ./snes -I ./zip -sUSE_SDL=2 -sEXPORTED_FUNCTIONS=_loadRawRom,_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,print,addRunDependency,removeRunDependency --pre-js web/joystick-pre.js -sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM=1 --preload-file /Volumes/Moon/dot/bswaplabs/LakeSnes/web/gamecontrollerdb.txt
 
 WINDRES = windres
 
